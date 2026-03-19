@@ -1,0 +1,75 @@
+.landing-container {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 70vh;
+	text-align: center;
+}
+.landing-logo {
+	width: 42px;
+	height: 42px;
+	border-radius: 10px;
+	background: linear-gradient(135deg, #1a1133, #2d1b4e);
+	border: 1px solid #3d2475;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 16px;
+	box-shadow: 0 0 24px rgba(139, 92, 246, 0.2);
+}
+.landing-logo-dot {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #8b5cf6;
+	opacity: 0.85;
+}
+.landing-title {
+	font-size: 32px;
+	font-weight: 600;
+	color: #f4f0ff;
+	margin: 0 0 8px;
+	letter-spacing: -0.5px;
+}
+.landing-subtitle {
+	font-size: 14px;
+	color: #9b92b8;
+	max-width: 340px;
+	line-height: 1.7;
+	margin: 0 0 32px;
+}
+.landing-divider {
+	width: 32px;
+	height: 1px;
+	background: #2d2640;
+	margin-bottom: 16px;
+}
+.landing-sources-label {
+	font-size: 10px;
+	color: #4e4668;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	margin-bottom: 12px;
+}
+.landing-pills {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+.pill {
+	font-size: 11px;
+	padding: 4px 12px;
+	border-radius: 999px;
+}
+.pill-violet {
+	background: #1a1133;
+	border: 1px solid #3d2475;
+	color: #8b5cf6;
+}
+.pill-muted {
+	border: 1px solid #2d2640;
+	color: #9b92b8;
+}
