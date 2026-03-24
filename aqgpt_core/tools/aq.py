@@ -146,36 +146,109 @@ def aq_get_summary(lat: float, lon: float, radius_km: float, pollutant: str, t0:
     """
     return aq_get_current(lat, lon, radius_km, pollutant)
 
+_POLLUTANT_COL_MAP = {
+    "pm2.5": "pm25", "pm25": "pm25",
+    "pm10":  "pm10",
+    "o3":    "o3",
+    "no2":   "no2",
+    "so2":   "so2",
+    "co":    "co",
+    "aqi":   "aqi",
+}
 
 @st.cache_data(ttl=600)
-def aq_get_timeseries(lat: float, lon: float, radius_km: float, pollutant: str, t0: str, t1: str) -> pd.DataFrame:
-    """
-    Get hourly AQ timeseries averaged across all stations in radius.
+def aq_get_timeseries(
+    lat: float,
+    lon: float,
+    radius_km: float,
+    pollutant: str,
+    t0: str,
+    t1: str,
+    aqi_csv: str = "./aqgpt_core/data/aqi_data.csv",
+) -> pd.DataFrame:
+    import math
+    from datetime import datetime
+    from pathlib import Path
 
-    Called by: render functions only (sparkline chart, trend analysis,
-    diurnal pattern, correlation charts).
-    Not intended for direct LLM use.
+    print(f"\n[timeseries] called: lat={lat}, lon={lon}, radius={radius_km}km, pollutant={pollutant}, t0={t0}, t1={t1}, csv={aqi_csv}")
 
-    Returns DataFrame with columns: time, <pollutant>
-    Note: in phase 1 this returns a single current reading as a flat
-    timeseries. Full historical timeseries added in phase 2 with database.
-    """
+    # ── 1. Resolve pollutant column name ──────────────────────────────────
+    col = _POLLUTANT_COL_MAP.get(pollutant.lower())
+    if col is None:
+        raise ValueError(f"Unknown pollutant '{pollutant}'. Valid: {list(_POLLUTANT_COL_MAP.keys())}")
+
+    print(f"[timeseries] resolved column: '{col}'")
+
+    # ── 2. Try CSV first ───────────────────────────────────────────────────
+    if not Path(aqi_csv).exists():
+        print(f"[timeseries] CSV not found at: {Path(aqi_csv).resolve()}")
+    else:
+        print(f"[timeseries] CSV found at: {Path(aqi_csv).resolve()}")
+        df = pd.read_csv(aqi_csv, parse_dates=["fetched_at_utc"])
+        print(f"[timeseries] CSV total rows: {len(df)}")
+        print(f"[timeseries] CSV time range: {df['fetched_at_utc'].min()} → {df['fetched_at_utc'].max()}")
+        print(f"[timeseries] CSV columns: {list(df.columns)}")
+        print(f"[timeseries] '{col}' non-null rows: {df[col].notna().sum()}")
+
+        df = df[df["error"].isna() | (df["error"].astype(str).str.strip() == "")].copy()
+        df = df[df[col].notna()].copy()
+        print(f"[timeseries] after error+notna filter: {len(df)} rows")
+
+        if df.empty:
+            print(f"[timeseries] FALLBACK: no valid rows after filter")
+        else:
+            t0_ts = pd.Timestamp(t0)
+            t1_ts = pd.Timestamp(t1)
+            print(f"[timeseries] filtering time: {t0_ts} → {t1_ts}")
+            df_time = df[(df["fetched_at_utc"] >= t0_ts) & (df["fetched_at_utc"] <= t1_ts)].copy()
+            print(f"[timeseries] after time filter: {len(df_time)} rows")
+
+            if df_time.empty:
+                print(f"[timeseries] FALLBACK: time range mismatch. CSV has {df['fetched_at_utc'].min()} → {df['fetched_at_utc'].max()}")
+            else:
+                def haversine_km(lat1, lon1, lat2, lon2):
+                    R = 6371.0
+                    dlat = math.radians(lat2 - lat1)
+                    dlon = math.radians(lon2 - lon1)
+                    a = (math.sin(dlat / 2) ** 2
+                         + math.cos(math.radians(lat1))
+                         * math.cos(math.radians(lat2))
+                         * math.sin(dlon / 2) ** 2)
+                    return R * 2 * math.asin(math.sqrt(a))
+
+                df_time["_dist_km"] = df_time.apply(
+                    lambda r: haversine_km(lat, lon, r["input_lat"], r["input_lon"]), axis=1
+                )
+                print(f"[timeseries] closest station: {df_time['_dist_km'].min():.1f} km, farthest: {df_time['_dist_km'].max():.1f} km")
+                df_near = df_time[df_time["_dist_km"] <= radius_km].copy()
+                print(f"[timeseries] after radius filter ({radius_km} km): {len(df_near)} rows")
+                
+                if df_near.empty:
+                    print(f"[timeseries] FALLBACK: no stations within {radius_km} km")
+                else:
+                    df_near["time"] = df_near["fetched_at_utc"].dt.floor("h")
+                    result = (
+                        df_near.groupby("time")[col]
+                        .mean()
+                        .round(1)
+                        .reset_index()
+                        .rename(columns={col: pollutant})
+                        .sort_values("time")
+                        .reset_index(drop=True)
+                    )
+                    print(f"[timeseries] SUCCESS: returning {len(result)} hourly rows")
+                    return result
+
+    # ── 3. Fallback ────────────────────────────────────────────────────────
+    print(f"[timeseries] hitting live fallback via aq_get_current")
     summary = aq_get_current(lat, lon, radius_km, pollutant)
     if summary.empty:
         return pd.DataFrame()
-
-    mean_val = summary["mean"].mean()
-
-    # Phase 1: return current reading as a single point timeseries
-    # Phase 2: replace with hourly readings from local database
-    from datetime import datetime
     return pd.DataFrame({
         "time":    [datetime.now()],
-        pollutant: [round(mean_val, 1)],
+        pollutant: [round(float(summary["mean"].mean()), 1)],
     })
 
-
-@st.cache_data(ttl=600)
 def aq_get_aqi_snapshot(lat: float, lon: float, radius_km: float, pollutant: str) -> dict:
     """
     Get a single clean AQI snapshot for a location — designed for LLM use.

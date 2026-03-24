@@ -154,8 +154,8 @@ def sources_get_power_plants(lat: float, lon: float, radius_km: float) -> list[d
     from pathlib import Path
     csv_path = POWER_PLANTS_CSV
 
-    if csv_path.exists():
-        return _power_plants_from_csv(lat, lon, radius_km, csv_path)
+    # if csv_path.exists():
+    #     return _power_plants_from_csv(lat, lon, radius_km, csv_path)
     return _power_plants_from_osm(lat, lon, radius_km)
 
 

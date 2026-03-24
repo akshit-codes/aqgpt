@@ -72,3 +72,26 @@ CATEGORIES = {
         "Diurnal pattern - worst hours?",
     ],
 }
+
+VIZ_TYPES = {
+    "What is the air quality right now?":       "conditions",
+    "Which stations are worst right now?":      "spatial",
+    "Better or worse than yesterday?":          "conditions",
+    "Show TROPOMI NO2 and fire hotspots":       "satellite",
+    "Are there active stubble fires?":          "satellite",
+    "Ground vs satellite - what do they show?": "satellite",
+    "What are the main pollution sources?":     "attribution",
+    "Traffic vs industry vs dust breakdown":    "attribution",
+    "Show thermal power plants on satellite":   "power_plants",
+    "Coal plants within 100km?":               "power_plants",
+    "Where is pollution coming from?":          "wind",
+    "Show wind patterns and transport":         "wind",
+    "Why is PM2.5 high right now?":            "why_bad",
+    "Is there atmospheric stagnation?":         "why_bad",
+    "Is outdoor exercise safe?":               "health",
+    "What mask grade is needed?":              "health",
+    "30% traffic cut - what's the impact?":    "intervention",
+    "Best intervention for fastest relief?":   "intervention",
+    "Air quality over past week":              "trends",
+    "Diurnal pattern - worst hours?":          "trends",
+}
