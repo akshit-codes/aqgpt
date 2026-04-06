@@ -87,15 +87,19 @@ def met_get_conditions(lat: float, lon: float, t0: str, t1: str) -> dict:
         stagnation_risk ('high'/'moderate'/'low')
 
     t0, t1: ISO format datetime strings e.g. '2025-03-01T00:00:00'
+
+    Returns error dict if data unavailable - do NOT return fabricated defaults.
     """
     df = _fetch_open_meteo(lat, lon, t0, t1)
 
     if df.empty:
         return {
-            "wind_speed": 0, "wind_direction": 0, "wind_label": "N",
-            "wind_calm_hours": 0, "blh_mean": 500, "blh_low_hours": 0,
-            "temperature_mean": 25, "humidity_mean": 50,
-            "stagnation_risk": "unknown",
+            "error": "Meteorological data unavailable",
+            "error_reason": "Open-Meteo API returned no data for the requested location and time period",
+            "wind_speed": None, "wind_direction": None, "wind_label": None,
+            "wind_calm_hours": None, "blh_mean": None, "blh_low_hours": None,
+            "temperature_mean": None, "humidity_mean": None,
+            "stagnation_risk": None,
         }
 
     # Vector mean wind direction
@@ -106,11 +110,13 @@ def met_get_conditions(lat: float, lon: float, t0: str, t1: str) -> dict:
     calm_hours = int((df["wind_speed"] < 1.0).sum())
 
     blh = df["blh"].dropna()
-    mean_blh = float(blh.mean()) if not blh.empty else 500
-    low_blh_hours = int((blh < 500).sum())
+    mean_blh = float(blh.mean()) if not blh.empty else None
+    low_blh_hours = int((blh < 500).sum()) if not blh.empty else None
 
     # Stagnation: high if mean BLH < 400m or (BLH < 600 and calm > 8h)
-    if mean_blh < 400 or (mean_blh < 600 and calm_hours > 8):
+    if mean_blh is None:
+        stagnation = None
+    elif mean_blh < 400 or (mean_blh < 600 and calm_hours > 8):
         stagnation = "high"
     elif mean_blh < 700 or calm_hours > 4:
         stagnation = "moderate"
@@ -122,7 +128,7 @@ def met_get_conditions(lat: float, lon: float, t0: str, t1: str) -> dict:
         "wind_direction":   round(mean_dir, 1),
         "wind_label":       _wind_label(mean_dir),
         "wind_calm_hours":  calm_hours,
-        "blh_mean":         round(mean_blh),
+        "blh_mean":         round(mean_blh) if mean_blh is not None else None,
         "blh_low_hours":    low_blh_hours,
         "temperature_mean": round(float(df["temperature"].mean()), 1),
         "humidity_mean":    round(float(df["humidity"].mean()), 1),

@@ -33,7 +33,7 @@ def _bbox(lat: float, lon: float, radius_km: float) -> str:
 def _overpass(query: str) -> list:
     """Execute an Overpass QL query and return elements."""
     try:
-        r = requests.post(OVERPASS_URL, data={"data": query}, timeout=25)
+        r = requests.post(OVERPASS_URL, data={"data": query}, timeout=60)
         r.raise_for_status()
         return r.json().get("elements", [])
     except requests.RequestException as e:

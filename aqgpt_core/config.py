@@ -10,11 +10,16 @@ WAQI_TOKEN = os.getenv("WAQI_TOKEN", "demo")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 NASA_FIRMS_KEY = os.getenv("NASA_FIRMS_KEY", "")
 
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+QWEN_API_BASE = os.getenv("QWEN_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+
 WAQI_BASE = "https://api.waqi.info"
 OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 NASA_FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
+# OVERPASS_URL = "https://overpass.openstreetmap.ru/api/interpreter"
 
 DATA_DIR = Path(__file__).parent / "data"
 POWER_PLANTS_CSV = DATA_DIR / "global_power_plants.csv"
@@ -95,3 +100,24 @@ VIZ_TYPES = {
     "Air quality over past week":              "trends",
     "Diurnal pattern - worst hours?":          "trends",
 }
+
+# ─── LLM Integration Settings ──────────────────────────────────────────────────
+# LLM provider for text generation (query understanding, answers, insights)
+# Options: "gemini", "qwen"
+LLM_TEXT_PROVIDER = os.getenv("LLM_TEXT_PROVIDER", "qwen")
+
+# LLM provider for function calling (tool orchestration)
+# Options: "gemini", "qwen"
+LLM_FUNCTION_CALLER = os.getenv("LLM_FUNCTION_CALLER", "qwen")
+
+# Gemini model versions
+GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+GEMINI_FUNCTION_CALLER_MODEL = os.getenv("GEMINI_FUNCTION_CALLER_MODEL", "gemini-2.5-flash")
+
+# Qwen model versions
+# DashScope name : qwen3-235b-a22b  (flagship MoE, best quality)
+#                  qwen3-30b-a3b    (smaller MoE, faster/cheaper)
+#                  qwen3-7b         (dense, very fast)
+# OpenRouter name: qwen/qwen3-235b-a22b  etc. (just add "qwen/" prefix)
+QWEN_TEXT_MODEL = os.getenv("QWEN_TEXT_MODEL", "qwen3-235b-a22b")
+QWEN_FUNCTION_CALLER_MODEL = os.getenv("QWEN_FUNCTION_CALLER_MODEL", "qwen3-235b-a22b")
