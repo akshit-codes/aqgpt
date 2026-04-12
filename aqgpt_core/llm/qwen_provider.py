@@ -92,12 +92,17 @@ class QwenTextGenerator(TextGenerator):
         """Map user query to visualization types and extract parameters."""
         lat = context.get("current_location", (DEFAULT_LAT, DEFAULT_LON))[0]
         lon = context.get("current_location", (DEFAULT_LAT, DEFAULT_LON))[1]
+        routing_guidance = context.get("routing_guidance", "")
+        routing_examples = context.get("routing_examples", [])
+        examples_block = "\n".join([f"- {e}" for e in routing_examples]) if routing_examples else ""
 
         prompt = (
             f"{QUERY_UNDERSTANDING_PROMPT}\n\n"
             f"Current location: Lat {lat}, Lon {lon}\n"
             f"Available visualization types: {', '.join(context.get('available_viz_types', []))}\n"
             f"Available pollutants: {', '.join(context.get('available_pollutants', []))}\n\n"
+            f"Routing guidance: {routing_guidance}\n"
+            f"Routing examples:\n{examples_block}\n\n"
             f'User query: "{query}"\n\n'
             "Return ONLY valid JSON, no markdown or other text."
         )

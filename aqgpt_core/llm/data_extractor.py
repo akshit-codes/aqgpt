@@ -14,6 +14,7 @@ from aqgpt_core.tools.met import met_get_conditions, met_get_stagnation, met_get
 from aqgpt_core.tools.satellite import satellite_get_fires, satellite_get_no2, satellite_get_aod
 from aqgpt_core.tools.sources import sources_get_all, sources_get_power_plants
 from aqgpt_core.tools.attribution import attribution_rank_sources
+from aqgpt_core.rag import get_rag_pipeline
 from aqgpt_core.llm.session_cache import (
     get_cached_tool_result, cache_tool_result, log_tool_call
 )
@@ -359,7 +360,25 @@ def extract_trends_data(lat: float, lon: float, radius_km: float, pollutant: str
         return {"error": str(e)}
 
 
-def extract_data_by_viz_type(viz_type: str, lat: float, lon: float, radius_km: float, pollutant: str, t0: str, t1: str) -> Dict[str, Any]:
+def extract_rag_data(user_query: str, chat_history: list[dict] | None = None) -> Dict[str, Any]:
+    """Extract data for RAG visualization and summary synthesis."""
+    if not user_query.strip():
+        return {"error": "Query is empty"}
+
+    try:
+        rag = get_rag_pipeline()
+        answer, sources = rag.query(user_query, chat_history=chat_history)
+        return {
+            "viz_type": "rag",
+            "answer": answer,
+            "sources": sources,
+            "source_count": len(sources),
+        }
+    except Exception as e:
+        return {"error": f"RAG retrieval failed: {str(e)}"}
+
+
+def extract_data_by_viz_type(viz_type: str, lat: float, lon: float, radius_km: float, pollutant: str, t0: str, t1: str, user_query: str = "", chat_history: list[dict] | None = None) -> Dict[str, Any]:
     """Extract data for a given visualization type."""
     extractors = {
         "conditions": extract_conditions_data,
@@ -373,6 +392,9 @@ def extract_data_by_viz_type(viz_type: str, lat: float, lon: float, radius_km: f
         "intervention": extract_intervention_data,
         "trends": extract_trends_data,
     }
+
+    if viz_type == "rag":
+        return extract_rag_data(user_query=user_query, chat_history=chat_history)
 
     extractor = extractors.get(viz_type)
     if extractor:

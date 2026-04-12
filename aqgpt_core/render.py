@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import re
 import folium
 from folium.plugins import HeatMap
 from scipy.interpolate import griddata
@@ -24,6 +25,8 @@ from aqgpt_core.tools.sources import sources_get_all, sources_get_power_plants
 from aqgpt_core.tools.attribution import attribution_rank_sources, attribution_explain
 from aqgpt_core.tools.satellite import satellite_get_fires, satellite_get_no2, satellite_get_aod
 from aqgpt_core.config import AQI_BREAKPOINTS
+from aqgpt_core.rag import get_rag_pipeline
+from aqgpt_core.rag.settings import RAG_CHROMA_DIR
 
 
 def get_aqi_category(value: float, pollutant: str = "PM2.5") -> tuple[str, str]:
@@ -1206,3 +1209,62 @@ def render_trends(lat, lon, radius_km, pollutant, t0, t1):
         "📊 Full historical trends (7d/30d diurnal patterns, weekend vs weekday) "
         "will be available in phase 2 when the database layer is added."
     )
+
+
+def render_rag(user_query: str):
+    """Render grounded RAG response and linked sources from urbanemissions.info."""
+    if not user_query.strip():
+        st.warning("Please enter a query for RAG retrieval.")
+        return
+
+    rag = get_rag_pipeline()
+    indexed_chunks = rag.chunk_count()
+    if indexed_chunks == 0:
+        st.warning(
+            "RAG index is empty in the configured Chroma directory: "
+            f"{RAG_CHROMA_DIR}. "
+            "Point RAG_CHROMA_DIR to your existing UE index (for example ./ue/chroma_db)."
+        )
+        return
+
+    answer, sources = rag.query(user_query)
+
+    def _to_superscript_citations(text: str) -> str:
+        return re.sub(r"\[(\d+)\]", r"<sup>[\1]</sup>", text)
+
+    st.markdown("**RAG Answer (UrbanEmissions Knowledge Base)**")
+    answer_html = _to_superscript_citations(answer)
+    st.markdown(
+        (
+            "<div style='padding:12px 16px;background:#172a1c;border:1px solid #2f6a3f;"
+            "border-radius:8px;color:#d9f7e2;'>"
+            f"{answer_html}"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.caption(f"Indexed chunks available: {indexed_chunks}")
+
+    st.markdown("**Sources**")
+    if not sources:
+        st.info("No sources found for this query.")
+        return
+
+    for idx, src in enumerate(sources, 1):
+        title = src.get("title", "Untitled")
+        url = src.get("url", "")
+        category = src.get("category", "General")
+        snippet = src.get("snippet", "")
+        quotes = src.get("quotes", [])
+
+        label = f"[{idx}] {title} ({category})"
+        with st.expander(label, expanded=False):
+            if url:
+                st.markdown(f"Link: [{url}]({url})")
+            if snippet:
+                st.caption(snippet)
+            if quotes:
+                st.markdown("**Quotes**")
+                for q in quotes[:3]:
+                    st.markdown(f"> {q}")

@@ -20,9 +20,16 @@ Available visualization types:
 - power_plants: Thermal power plants on map
 - intervention: What-if scenarios (traffic cuts, shutdowns)
 - trends: Historical AQ patterns and diurnal cycles
+- rag: Retrieve and summarize urbanemissions.info knowledge-base articles/PDF links
 
 Available pollutants: PM2.5, PM10, NO2, SO2, O3, CO
 Available time windows: last_24h, last_7d, last_30d
+
+MANDATORY ROUTING RULES:
+- If query asks conceptual knowledge/explanation/definition (e.g., "what is", "explain", "meaning", "overview") about air pollution, include "rag".
+- If query asks what a source says (urbanemissions/articles/reports/pdf/references), include "rag".
+- If query mixes conceptual + local status/intervention asks, include rag PLUS relevant local viz types.
+- Prefer additive routing over replacement for multi-part questions.
 
 **For queries WITHOUT specific locations:**
 Return a JSON response with:
@@ -55,6 +62,8 @@ Examples:
 - "Is it safe to exercise?" → viz_types: ["health"]
 - "What's the AQI now? What causes it?" → viz_types: ["conditions", "why_bad"]
 - "Current AQI, sources, and interventions?" → viz_types: ["conditions", "attribution", "intervention"]
+- "What does urbanemissions say about crop burning?" → viz_types: ["rag"]
+- "What is pollution, how is it in Delhi, and how to improve it?" → viz_types: ["rag", "conditions", "why_bad", "intervention"]
 - "What's the air quality in XyzCity?" → {"location_not_found": true, "error_message": "I couldn't identify..."}
 """
 

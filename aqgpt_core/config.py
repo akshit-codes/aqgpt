@@ -17,8 +17,8 @@ WAQI_BASE = "https://api.waqi.info"
 OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 NASA_FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
-# OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
 # OVERPASS_URL = "https://overpass.openstreetmap.ru/api/interpreter"
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -76,6 +76,10 @@ CATEGORIES = {
         "Air quality over past week",
         "Diurnal pattern - worst hours?",
     ],
+    "📚 UrbanEmissions Knowledge": [
+        "What does urbanemissions say about PM2.5 sources in India?",
+        "Find urbanemissions articles on crop burning and air quality",
+    ],
 }
 
 VIZ_TYPES = {
@@ -99,6 +103,8 @@ VIZ_TYPES = {
     "Best intervention for fastest relief?":   "intervention",
     "Air quality over past week":              "trends",
     "Diurnal pattern - worst hours?":          "trends",
+    "What does urbanemissions say about PM2.5 sources in India?": "rag",
+    "Find urbanemissions articles on crop burning and air quality": "rag",
 }
 
 # ─── LLM Integration Settings ──────────────────────────────────────────────────

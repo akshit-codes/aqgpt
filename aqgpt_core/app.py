@@ -11,7 +11,7 @@ from aqgpt_core.llm.session_cache import clear_tool_calls_log, get_tool_calls_lo
 from aqgpt_core.render import (
     render_conditions, render_wind_transport, render_health_advisory,
     render_attribution, render_why_bad, render_spatial_map, render_satellite,
-    render_power_plants, render_intervention, render_trends
+    render_power_plants, render_intervention, render_trends, render_rag
 )
 
 st.set_page_config(page_title="AQGPT", layout="wide", initial_sidebar_state="expanded")
@@ -89,13 +89,25 @@ else:
 
     # Try to understand query using Gemini first
     llm = get_text_generator()
+    routing_query = st.session_state.query.strip()
     context = {
         'current_location': (lat, lon),
         'available_viz_types': list(set(VIZ_TYPES.values())),
         'available_pollutants': ['PM2.5', 'PM10', 'NO2', 'SO2', 'O3', 'CO'],
+        'routing_guidance': (
+            "Use rag for conceptual or source-backed questions (e.g., 'what is pollution', "
+            "'explain PM2.5', 'what does urbanemissions say'). If the user also asks city status "
+            "or interventions, include rag alongside local diagnostics visualizations."
+        ),
+        'routing_examples': [
+            "What is pollution? -> ['rag']",
+            "What is pollution and how is it in Delhi? -> ['rag', 'conditions', 'why_bad']",
+            "What is pollution, how is it in Delhi, and how to improve? -> ['rag', 'conditions', 'why_bad', 'intervention']",
+            "What does urbanemissions say about crop burning? -> ['rag']",
+        ],
     }
 
-    query_result = llm.understand_query(st.session_state.query, context)
+    query_result = llm.understand_query(routing_query, context)
 
     # Check if there was an error (e.g., location not found)
     if query_result.get("error", False):
@@ -129,7 +141,16 @@ else:
     all_data = {}
     for viz_type in viz_types:
         try:
-            data = extract_data_by_viz_type(viz_type, lat, lon, radius_km, pollutant, t0, t1)
+            data = extract_data_by_viz_type(
+                viz_type,
+                lat,
+                lon,
+                radius_km,
+                pollutant,
+                t0,
+                t1,
+                user_query=st.session_state.query,
+            )
             if "error" not in data:
                 all_data[viz_type] = data
         except Exception as e:
@@ -211,6 +232,8 @@ else:
                     render_intervention(lat, lon, radius_km, pollutant, t0, t1, ai_interventions=ai_interventions)
                 elif viz_type == "trends":
                     render_trends(lat, lon, radius_km, pollutant, t0, t1)
+                elif viz_type == "rag":
+                    render_rag(st.session_state.query)
             except Exception as e:
                 st.error(f"Error rendering {viz_type}: {str(e)}")
                 st.debug(f"Full error: {e}")

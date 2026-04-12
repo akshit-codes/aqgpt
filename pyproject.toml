@@ -5,19 +5,25 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "chromadb>=1.0.0",
     "dotenv>=0.9.9",
     "folium>=0.20.0",
     "google-genai>=1.67.0",
     "google-generativeai>=0.4.0",
     "numpy>=2.2.6",
+    "onnxruntime<1.24",
+    "ollama>=0.6.0",
     "openai>=1.30.0",
     "pandas>=2.3.3",
     "plotly>=6.6.0",
     "python-dotenv>=1.2.2",
     "requests>=2.32.5",
     "scipy>=1.15.3",
+    "sentence-transformers==3.4.1",
     "streamlit>=1.55.0",
     "streamlit-folium>=0.26.2",
+    "torchvision>=0.19.0",
+    "transformers<4.52",
 ]
 
 [build-system]

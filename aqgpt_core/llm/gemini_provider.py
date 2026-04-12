@@ -35,6 +35,10 @@ class GeminiTextGenerator(TextGenerator):
 
     def understand_query(self, query: str, context: dict) -> dict:
         """Map user query to visualization types and extract parameters."""
+        routing_guidance = context.get("routing_guidance", "")
+        routing_examples = context.get("routing_examples", [])
+        examples_block = "\n".join([f"- {e}" for e in routing_examples]) if routing_examples else ""
+
         prompt = f"""{QUERY_UNDERSTANDING_PROMPT}
 
 Current location: Lat {context.get('current_location', (DEFAULT_LAT, DEFAULT_LON))[0]},
@@ -42,6 +46,10 @@ Current location: Lat {context.get('current_location', (DEFAULT_LAT, DEFAULT_LON
 
 Available visualization types: {', '.join(context.get('available_viz_types', []))}
 Available pollutants: {', '.join(context.get('available_pollutants', []))}
+
+    Routing guidance: {routing_guidance}
+    Routing examples:
+    {examples_block}
 
 User query: "{query}"
 
