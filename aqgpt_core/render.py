@@ -204,7 +204,7 @@ def render_conditions(lat, lon, radius_km, pollutant, t0, t1):
             if insight:
                 st.info(f"💡 Insight: {insight}")
         except Exception as e:
-            st.debug(f"Could not generate insight: {e}")
+            st.caption(f"Details: {e}")
 
     # ── Station Ranking ───────────────────────────────────────────────────────
     if not summary.empty:
@@ -620,7 +620,7 @@ def render_attribution(lat, lon, radius_km, pollutant, t0, t1):
         if analysis:
             st.info(f"🔍 Pattern Analysis: {analysis}")
     except Exception as e:
-        st.debug(f"Could not generate attribution analysis: {e}")
+        st.caption(f"Details: {e}")
 
 
 def render_why_bad(lat, lon, radius_km, pollutant, t0, t1):
@@ -901,7 +901,7 @@ def render_satellite(lat, lon, radius_km, pollutant, t0, t1):
         if interpretation:
             st.info(f"🛰️ Analysis: {interpretation}")
     except Exception as e:
-        st.debug(f"Could not generate satellite interpretation: {e}")
+        st.caption(f"Details: {e}")
 
     st.divider()
 

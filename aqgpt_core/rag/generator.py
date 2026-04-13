@@ -1,16 +1,16 @@
 """Generation backends for AQGPT RAG answers."""
 
-import json
+from __future__ import annotations
+
 import importlib
 from abc import ABC, abstractmethod
 
-from openai import OpenAI
-
-from aqgpt_core.config import QWEN_API_BASE, QWEN_API_KEY
+from aqgpt_core.config import RAG_GENERATION_CONFIG
+from aqgpt_core.llm.vllm_provider import VLLMClient
 from aqgpt_core.rag.settings import (
-    RAG_GENERATION_PROVIDER,
     RAG_GENERATION_MODEL,
     RAG_OLLAMA_BASE_URL,
+    RAG_VLLM_BASE_URL,
 )
 
 SYSTEM_PROMPT = """You are an expert assistant for urbanemissions.info, an air pollution knowledge platform focused on India.
@@ -36,25 +36,10 @@ class OllamaGenerator(BaseRAGGenerator):
         try:
             ollama = importlib.import_module("ollama")
         except ImportError as exc:
-            raise ImportError("ollama package is required for RAG_GENERATION_PROVIDER=ollama") from exc
+            raise ImportError("ollama package is required for the RAG generator") from exc
 
         self.model = model
         self.client = ollama.Client(host=base_url)
-
-    def generate(self, question: str, context_block: str, chat_history: list[dict] | None = None) -> str:
-        prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"Context from urbanemissions.info:\n\n{context_block}\n\n"
-            f"Question: {question}"
-        )
-        response = self.client.generate(model=self.model, prompt=prompt, stream=False)
-        return response.get("response", "")
-
-
-class QwenAPIGenerator(BaseRAGGenerator):
-    def __init__(self, model: str = RAG_GENERATION_MODEL):
-        self.client = OpenAI(api_key=QWEN_API_KEY, base_url=QWEN_API_BASE)
-        self.model = model
 
     def generate(self, question: str, context_block: str, chat_history: list[dict] | None = None) -> str:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -74,17 +59,11 @@ class QwenAPIGenerator(BaseRAGGenerator):
             }
         )
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0.2,
-        )
-        return response.choices[0].message.content or ""
+        response = self.client.chat(model=self.model, messages=messages)
+        return (response.get("message", {}) or {}).get("content", "") or ""
 
 
 class FallbackGenerator(BaseRAGGenerator):
-    """Last-resort generation from snippets if model backend is unavailable."""
-
     def generate(self, question: str, context_block: str, chat_history: list[dict] | None = None) -> str:
         lines = [line for line in context_block.splitlines() if line.strip()]
         if not lines:
@@ -96,10 +75,40 @@ class FallbackGenerator(BaseRAGGenerator):
         )
 
 
+class VLLMGenerator(BaseRAGGenerator):
+    def __init__(self, model: str = RAG_GENERATION_MODEL, base_url: str = RAG_VLLM_BASE_URL):
+        self.model = model
+        self.client = VLLMClient(base_url=base_url)
+
+    def generate(self, question: str, context_block: str, chat_history: list[dict] | None = None) -> str:
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        if chat_history:
+            for msg in chat_history[-6:]:
+                role = "assistant" if msg.get("role") == "assistant" else "user"
+                messages.append({"role": role, "content": msg.get("content", "")})
+
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Context from urbanemissions.info:\n\n{context_block}\n\n"
+                    f"Question: {question}"
+                ),
+            }
+        )
+
+        response = self.client.chat(model=self.model, messages=messages, temperature=0.2)
+        choices = response.get("choices", [])
+        if not choices:
+            return ""
+        return (choices[0].get("message", {}) or {}).get("content", "") or ""
+
+
 def build_generator() -> BaseRAGGenerator:
-    provider = (RAG_GENERATION_PROVIDER or "ollama").lower()
-    if provider == "ollama":
-        return OllamaGenerator()
-    if provider == "qwen_api":
-        return QwenAPIGenerator()
+    provider = (RAG_GENERATION_CONFIG.provider or "qwen").lower()
+    if provider in {"qwen", "ollama"}:
+        return OllamaGenerator(model=RAG_GENERATION_MODEL, base_url=RAG_OLLAMA_BASE_URL)
+    if provider == "vllm":
+        return VLLMGenerator(model=RAG_GENERATION_MODEL, base_url=RAG_VLLM_BASE_URL)
     return FallbackGenerator()

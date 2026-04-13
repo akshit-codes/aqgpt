@@ -29,7 +29,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 class GeminiTextGenerator(TextGenerator):
     """Gemini-based text generation for queries, answers, and insights."""
 
-    def __init__(self, model: str = "gemini-2.5-flash"):
+    def __init__(self, model: str):
         self.model = genai.GenerativeModel(model)
         self.model_name = model
 
@@ -301,6 +301,9 @@ If multiple analysis types are provided, synthesize them into a cohesive answer.
 
 
 class GeminiFunctionCaller(FunctionCaller):
+    def __init__(self, model: str):
+        self.client = genai.GenerativeModel(model)
+        self.model_name = model
 
     def call_with_tools(
         self,

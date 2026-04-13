@@ -154,7 +154,7 @@ else:
             if "error" not in data:
                 all_data[viz_type] = data
         except Exception as e:
-            st.debug(f"Error extracting {viz_type}: {e}")
+            st.caption(f"Details: {e}")
 
     # Generate comprehensive answer based on ALL collected data
     if all_data:
@@ -164,7 +164,7 @@ else:
                 st.success(f"**📊 Analysis:** {comprehensive_answer}")
                 st.divider()
         except Exception as e:
-            st.debug(f"Answer generation error: {e}")
+            st.caption(f"Details: {e}")
 
     # Pre-generate interventions if needed (runs once per unique query, cached in session_state)
     ai_interventions = None
@@ -198,7 +198,7 @@ else:
                     )
                     st.session_state.last_query_for_interventions = st.session_state.query
             except Exception as e:
-                st.debug(f"Could not pre-generate interventions: {e}")
+                st.caption(f"Details: {e}")
                 st.session_state.ai_interventions = None
 
         # Use cached interventions from session state
@@ -236,7 +236,7 @@ else:
                     render_rag(st.session_state.query)
             except Exception as e:
                 st.error(f"Error rendering {viz_type}: {str(e)}")
-                st.debug(f"Full error: {e}")
+                st.caption(f"Details: {e}")
 
             st.divider()
 
@@ -276,4 +276,3 @@ else:
                     })
         else:
             st.info("No tool calls made for this query.")
-

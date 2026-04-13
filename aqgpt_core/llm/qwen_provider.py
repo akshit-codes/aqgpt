@@ -1,95 +1,72 @@
-"""Qwen 3.0 LLM implementation for text generation and function calling.
+"""Qwen via native Ollama for text generation and tool calling."""
 
-Uses the OpenAI-compatible API exposed by:
-  - Qwen's own endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
-  - OR OpenRouter: https://openrouter.ai/api/v1  (model: "qwen/qwen3-235b-a22b")
+from __future__ import annotations
 
-Set QWEN_API_BASE and QWEN_API_KEY in your .env to choose which backend.
-"""
-
+import importlib
 import json
-from typing import Any, Dict, Optional
-
-from openai import OpenAI
-
-from aqgpt_core.config import (
-    QWEN_API_KEY,
-    QWEN_API_BASE,
-    QWEN_TEXT_MODEL,
-    QWEN_FUNCTION_CALLER_MODEL,
-    DEFAULT_LAT,
-    DEFAULT_LON,
-    DEFAULT_RADIUS_KM,
-)
-from aqgpt_core.llm.base import TextGenerator, FunctionCaller
-from aqgpt_core.llm.prompts import (
-    QUERY_UNDERSTANDING_PROMPT,
-    HEALTH_ADVISORY_PROMPT,
-    WHY_BAD_PROMPT,
-    CONDITIONS_SUMMARY_PROMPT,
-    SATELLITE_INTERPRETATION_PROMPT,
-    ATTRIBUTION_CONTEXT_PROMPT,
-    INTERVENTION_CUSTOM_PROMPT,
-)
-from aqgpt_core.llm.tool_registry import AVAILABLE_TOOLS, invoke_tool
+from typing import Optional
 
 import streamlit as st
 
+from aqgpt_core.config import (
+    DEFAULT_LAT,
+    DEFAULT_LON,
+    DEFAULT_RADIUS_KM,
+    OLLAMA_BASE_URL,
+)
+from aqgpt_core.llm.base import FunctionCaller, TextGenerator
+from aqgpt_core.llm.prompts import (
+    ATTRIBUTION_CONTEXT_PROMPT,
+    CONDITIONS_SUMMARY_PROMPT,
+    HEALTH_ADVISORY_PROMPT,
+    INTERVENTION_CUSTOM_PROMPT,
+    QUERY_UNDERSTANDING_PROMPT,
+    SATELLITE_INTERPRETATION_PROMPT,
+    WHY_BAD_PROMPT,
+)
+from aqgpt_core.llm.tool_registry import AVAILABLE_TOOLS, invoke_tool
 
-# ---------------------------------------------------------------------------
-# Shared OpenAI client (reused by both classes)
-# ---------------------------------------------------------------------------
 
-def _make_client() -> OpenAI:
-    return OpenAI(api_key=QWEN_API_KEY, base_url=QWEN_API_BASE)
+def _make_client():
+    try:
+        ollama = importlib.import_module("ollama")
+    except ImportError as exc:
+        raise ImportError("ollama package is required for the Qwen/Ollama backend") from exc
+    return ollama.Client(host=OLLAMA_BASE_URL)
 
 
-# ---------------------------------------------------------------------------
-# Helper: convert our tool-registry schema to OpenAI function-calling format
-# ---------------------------------------------------------------------------
+def _strip_json_wrappers(text: str) -> str:
+    return text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
-def _tools_to_openai_format(tools: list) -> list:
-    """Convert AVAILABLE_TOOLS list to OpenAI tools format."""
+
+def _chat(client, model: str, messages: list[dict], **options) -> str:
+    response = client.chat(model=model, messages=messages, options=options or None)
+    return (response.get("message", {}) or {}).get("content", "") or ""
+
+
+def _tools_to_ollama_format(tools: list) -> list[dict]:
     return [
         {
             "type": "function",
             "function": {
-                "name": t["name"],
-                "description": t["description"],
-                "parameters": t["input_schema"],
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
             },
         }
-        for t in tools
+        for tool in tools
     ]
 
 
-# ---------------------------------------------------------------------------
-# Helper: call Qwen and return plain text
-# ---------------------------------------------------------------------------
-
-def _chat(client: OpenAI, model: str, messages: list, **kwargs) -> str:
-    """Simple wrapper around client.chat.completions.create → text."""
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        **kwargs,
-    )
-    return response.choices[0].message.content or ""
-
-
-# ---------------------------------------------------------------------------
-# Text Generator
-# ---------------------------------------------------------------------------
-
 class QwenTextGenerator(TextGenerator):
-    """Qwen-based text generation for query understanding, answers, and insights."""
+    """Qwen-based text generation backed by Ollama."""
 
-    def __init__(self, model: str = QWEN_TEXT_MODEL):
+    def __init__(self, model: str, provider: str = "qwen"):
         self.client = _make_client()
         self.model = model
+        self.provider = provider
 
     def understand_query(self, query: str, context: dict) -> dict:
-        """Map user query to visualization types and extract parameters."""
         lat = context.get("current_location", (DEFAULT_LAT, DEFAULT_LON))[0]
         lon = context.get("current_location", (DEFAULT_LAT, DEFAULT_LON))[1]
         routing_guidance = context.get("routing_guidance", "")
@@ -108,16 +85,9 @@ class QwenTextGenerator(TextGenerator):
         )
 
         try:
-            text = _chat(
-                self.client,
-                self.model,
-                [{"role": "user", "content": prompt}],
-            )
-            # Strip accidental markdown fences
-            text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            result = json.loads(text)
+            text = _chat(self.client, self.model, [{"role": "user", "content": prompt}])
+            result = json.loads(_strip_json_wrappers(text))
 
-            # Check if Qwen couldn't find a requested location
             if result.get("location_not_found", False):
                 return {
                     "understood_intent": result.get("understood_intent", query),
@@ -128,7 +98,10 @@ class QwenTextGenerator(TextGenerator):
                     "error": True,
                     "error_message": result.get("error_message", "Location not found"),
                     "confidence": 0.0,
-                    "answer_summary": result.get("error_message", "I couldn't identify the location you mentioned."),
+                    "answer_summary": result.get(
+                        "error_message",
+                        "I couldn't identify the location you mentioned.",
+                    ),
                 }
 
             viz_types = result.get("viz_types", [result.get("viz_type", "conditions")])
@@ -163,37 +136,30 @@ class QwenTextGenerator(TextGenerator):
             }
 
     def generate_answer(self, data_context, viz_types=None, user_query: str = "") -> str:
-        """Generate natural language summary of visualization data."""
         if isinstance(viz_types, str):
             viz_types = [viz_types]
         if viz_types and not isinstance(data_context, dict):
             data_context = {"single": data_context}
 
         viz_types_str = ", ".join(viz_types) if viz_types else "general analysis"
-
         prompt = (
             f'You are an air quality analyst. The user asked: "{user_query}"\n\n'
             f"Based on the following data analysis for {viz_types_str}, "
             "provide a direct, specific answer to their question.\n\n"
             f"Data context: {json.dumps(data_context, default=str)}\n\n"
             "Provide a thorough answer that directly addresses the user's question. "
-            "Match the length and depth the user requested if specified."
-            "with specific numbers/findings from the data. "
-            "Be conversational, insightful, and action-oriented when relevant. "
-            "If multiple analysis types are provided, synthesize them into a cohesive answer."
+            "Match the length and depth the user requested if specified, with specific "
+            "numbers/findings from the data. Be conversational, insightful, and "
+            "action-oriented when relevant. If multiple analysis types are provided, "
+            "synthesize them into a cohesive answer."
         )
 
         try:
-            return _chat(
-                self.client,
-                self.model,
-                [{"role": "user", "content": prompt}],
-            ) or "Data analysis completed."
+            return _chat(self.client, self.model, [{"role": "user", "content": prompt}]) or "Data analysis completed."
         except Exception:
             return f"Analysis completed for: {viz_types_str}"
 
     def generate_health_advisory(self, pollutant_level: float, pollutant: str, location: tuple) -> dict:
-        """Generate health recommendations."""
         prompt = (
             HEALTH_ADVISORY_PROMPT.format(
                 pollutant_level=pollutant_level,
@@ -204,14 +170,12 @@ class QwenTextGenerator(TextGenerator):
         )
         try:
             text = _chat(self.client, self.model, [{"role": "user", "content": prompt}])
-            text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            return json.loads(text)
+            return json.loads(_strip_json_wrappers(text))
         except Exception as e:
             st.warning(f"Health advisory generation error: {e}")
             return self._fallback_health_advisory(pollutant_level, pollutant)
 
     def analyze_why_bad(self, met_data: dict, pollutant_level: float, location: tuple) -> list:
-        """Analyze why pollution is high."""
         prompt = (
             WHY_BAD_PROMPT.format(
                 met_data=json.dumps(met_data, default=str),
@@ -222,8 +186,7 @@ class QwenTextGenerator(TextGenerator):
         )
         try:
             text = _chat(self.client, self.model, [{"role": "user", "content": prompt}])
-            text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            result = json.loads(text)
+            result = json.loads(_strip_json_wrappers(text))
             return result.get("factors", [])
         except Exception as e:
             st.warning(f"Why bad analysis error: {e}")
@@ -317,51 +280,60 @@ class QwenTextGenerator(TextGenerator):
         )
         try:
             text = _chat(self.client, self.model, [{"role": "user", "content": prompt}])
-            text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            result = json.loads(text)
+            result = json.loads(_strip_json_wrappers(text))
             return result.get("interventions", [])
         except Exception:
             return []
 
-    # ------------------------------------------------------------------
-    # Fallback (copied from GeminiTextGenerator so no import needed)
-    # ------------------------------------------------------------------
     @staticmethod
     def _fallback_health_advisory(level: float, pollutant: str) -> dict:
         if level <= 60:
             return {
-                "health_class": "Good", "border_color": "#22c55e", "bg_color": "#dcfce7",
-                "outdoor_ok": True, "sensitive_risk": "Low", "general_risk": "None",
-                "exercise_rec": "Safe for all activities", "mask_rec": "No mask needed",
-                "header": "Air quality is good", "activities": [],
+                "health_class": "Good",
+                "border_color": "#22c55e",
+                "bg_color": "#dcfce7",
+                "outdoor_ok": True,
+                "sensitive_risk": "Low",
+                "general_risk": "None",
+                "exercise_rec": "Safe for all activities",
+                "mask_rec": "No mask needed",
+                "header": "Air quality is good",
+                "activities": [],
             }
-        elif level <= 120:
+        if level <= 120:
             return {
-                "health_class": "Moderate", "border_color": "#eab308", "bg_color": "#fef08a",
-                "outdoor_ok": True, "sensitive_risk": "Moderate", "general_risk": "Low",
+                "health_class": "Moderate",
+                "border_color": "#eab308",
+                "bg_color": "#fef08a",
+                "outdoor_ok": True,
+                "sensitive_risk": "Moderate",
+                "general_risk": "Low",
                 "exercise_rec": "General population OK, sensitive groups should reduce",
                 "mask_rec": "Mask recommended for sensitive groups",
-                "header": "Air quality is moderate", "activities": [],
+                "header": "Air quality is moderate",
+                "activities": [],
             }
-        else:
-            return {
-                "health_class": "Poor", "border_color": "#f97316", "bg_color": "#fed7aa",
-                "outdoor_ok": False, "sensitive_risk": "High", "general_risk": "Moderate",
-                "exercise_rec": "Limit outdoor activities", "mask_rec": "N95 mask recommended",
-                "header": "Air quality is poor", "activities": [],
-            }
+        return {
+            "health_class": "Poor",
+            "border_color": "#f97316",
+            "bg_color": "#fed7aa",
+            "outdoor_ok": False,
+            "sensitive_risk": "High",
+            "general_risk": "Moderate",
+            "exercise_rec": "Limit outdoor activities",
+            "mask_rec": "N95 mask recommended",
+            "header": "Air quality is poor",
+            "activities": [],
+        }
 
-
-# ---------------------------------------------------------------------------
-# Function Caller (agentic tool loop)
-# ---------------------------------------------------------------------------
 
 class QwenFunctionCaller(FunctionCaller):
-    """Qwen-based function calling using OpenAI-compatible tool_use API."""
+    """Qwen function calling backed by Ollama tools."""
 
-    def __init__(self, model: str = QWEN_FUNCTION_CALLER_MODEL):
+    def __init__(self, model: str, provider: str = "qwen"):
         self.client = _make_client()
         self.model = model
+        self.provider = provider
 
     def call_with_tools(
         self,
@@ -370,55 +342,52 @@ class QwenFunctionCaller(FunctionCaller):
         tool_executor: Optional[callable] = None,
         max_turns: int = 5,
     ) -> dict:
-        """Execute query with Qwen native function calling (OpenAI tool_use format)."""
         if tool_executor is None:
             tool_executor = invoke_tool
         if tools is None:
             tools = AVAILABLE_TOOLS
 
-        openai_tools = _tools_to_openai_format(tools)
-        messages = [{"role": "user", "content": query}]
+        ollama_tools = _tools_to_ollama_format(tools)
+        messages: list[dict] = [{"role": "user", "content": query}]
         tools_called: list[str] = []
         all_results: dict = {}
 
         for _ in range(max_turns):
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto",
-            )
-            msg = response.choices[0].message
+            response = self.client.chat(model=self.model, messages=messages, tools=ollama_tools)
+            message = (response.get("message", {}) or {})
+            tool_calls = message.get("tool_calls") or []
 
-            # No tool calls → done
-            if not msg.tool_calls:
+            if not tool_calls:
                 return {
-                    "response": msg.content or "",
+                    "response": message.get("content", "") or "",
                     "tools_called": tools_called,
                     "data_fetched": all_results,
                     "success": True,
                 }
 
-            # Append assistant message (with tool_calls) to history
-            messages.append(msg)
+            messages.append(message)
 
-            # Execute each tool call and collect results
-            for tc in msg.tool_calls:
-                tool_name = tc.function.name
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
+            for tool_call in tool_calls:
+                fn = tool_call.get("function", {}) or {}
+                tool_name = fn.get("name", "")
+                args = fn.get("arguments", {}) or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
 
                 result = tool_executor(tool_name, **args)
                 tools_called.append(tool_name)
                 all_results[tool_name] = result
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(result, default=str),
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": json.dumps(result, default=str),
+                    }
+                )
 
         return {
             "response": "Max tool call turns reached",
